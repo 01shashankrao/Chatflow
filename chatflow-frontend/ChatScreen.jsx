@@ -1,28 +1,57 @@
 import { useState, useEffect, useRef } from "react";
 import { COLORS, MOCK_MESSAGES } from './constants.js';
 import Avatar from './Avatar.jsx';
+import { API } from './api.js';
 
-function ChatScreen({ chat, onBack, isGroup, isAnon }) {
+function ChatScreen({ chat, onBack, isGroup, isAnon, token }) {
   const [messages, setMessages] = useState(MOCK_MESSAGES[chat.id] || []);
   const [input, setInput] = useState("");
   const [ghostMode, setGhostMode] = useState(false);
-  const bottomRef = useRef();
+  const bottomRef = useRef(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { 
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" }); 
+  }, [messages]);
 
-  const send = () => {
-    if (!input.trim()) return;
-    const msgId = Date.now();
-    const msg = {
-      id: msgId, from: "me", text: input,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      ghost: ghostMode,
-    };
-    setMessages(m => [...m, msg]);
-    setInput("");
-    if (ghostMode) {
-      setTimeout(() => setMessages(m => m.filter(x => x.id !== msgId)), 8000);
+  useEffect(() => {
+    if (token && chat?._id) {
+      API.getMessages(chat._id, token)
+        .then(data => { if (data.success && data.messages) setMessages(data.messages); })
+        .catch(() => {});
     }
+  }, [chat?._id, token]);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    
+    if (token && chat?._id) {
+      try {
+        const data = await API.sendMessage(chat._id, input, token);
+        if (data.success) {
+          setMessages(m => [...m, data.message]);
+        }
+      } catch {
+        const msgId = Date.now();
+        const msg = {
+          id: msgId, from: "me", text: input,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          ghost: ghostMode,
+        };
+        setMessages(m => [...m, msg]);
+      }
+    } else {
+      const msgId = Date.now();
+      const msg = {
+        id: msgId, from: "me", text: input,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        ghost: ghostMode,
+      };
+      setMessages(m => [...m, msg]);
+      if (ghostMode) {
+        setTimeout(() => setMessages(m => m.filter(x => x.id !== msgId)), 8000);
+      }
+    }
+    setInput("");
   };
 
   return (
@@ -51,20 +80,20 @@ function ChatScreen({ chat, onBack, isGroup, isAnon }) {
 
       <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
         {messages.map(msg => (
-          <div key={msg.id} style={{ display: "flex", justifyContent: msg.from === "me" ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", opacity: msg.ghost ? 0.85 : 1, transition: "opacity 0.5s" }}>
-            {msg.from !== "me" && <Avatar name={isAnon ? "?" : (isGroup ? msg.from : chat.name)} size={28} anon={isAnon} />}
+          <div key={msg.id || msg._id} style={{ display: "flex", justifyContent: msg.from === "me" || msg.sender === "me" ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", opacity: msg.ghost ? 0.85 : 1, transition: "opacity 0.5s" }}>
+            {msg.from !== "me" && msg.sender !== "me" && <Avatar name={isAnon ? "?" : (isGroup ? msg.from : chat.name)} size={28} anon={isAnon} />}
             <div style={{ maxWidth: "72%" }}>
-              {isGroup && msg.from !== "me" && <div style={{ fontSize: 10, color: COLORS.teal, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>{msg.from}</div>}
+              {isGroup && msg.from !== "me" && msg.sender !== "me" && <div style={{ fontSize: 10, color: COLORS.teal, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>{msg.from || msg.senderName}</div>}
               <div style={{
-                background: msg.from === "me" ? `linear-gradient(135deg, ${COLORS.peach}, ${COLORS.peachDark})` : COLORS.card,
-                borderRadius: msg.from === "me" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                background: msg.from === "me" || msg.sender === "me" ? `linear-gradient(135deg, ${COLORS.peach}, ${COLORS.peachDark})` : COLORS.card,
+                borderRadius: msg.from === "me" || msg.sender === "me" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                 padding: "10px 14px",
                 boxShadow: `0 2px 8px ${COLORS.peach}40`,
-                border: msg.from !== "me" ? `1px solid ${COLORS.peach}40` : "none",
+                border: msg.from !== "me" && msg.sender !== "me" ? `1px solid ${COLORS.peach}40` : "none",
               }}>
                 <div style={{ fontSize: 14 }}>{msg.text}</div>
                 <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 4, textAlign: "right" }}>
-                  {msg.ghost ? "💨 " : ""}{msg.time}
+                  {msg.ghost ? "💨 " : ""}{msg.time || new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </div>
             </div>
