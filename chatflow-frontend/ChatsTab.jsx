@@ -1,13 +1,24 @@
-import { useState } from "react";
-import { COLORS, DIRECT, GROUPS, ANON } from './constants.js';
+import { useState, useEffect } from "react";
+import { COLORS, style, DIRECT } from './constants.js';
+import ChatScreen from './ChatScreen.jsx';
 import Avatar from './Avatar.jsx';
+import { API } from './api.js';
 
-function ChatsTab({ onSelect }) {
-  const [tab, setTab] = useState("direct");
+export default function ChatsTab({ onSelect, token }) {
+  const [chats, setChats] = useState([]);
   const [search, setSearch] = useState("");
 
-  const lists = { direct: DIRECT, groups: GROUPS, anon: ANON };
-  const current = lists[tab].filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  useEffect(() => {
+    if (token) {
+      API.getChats(token)
+        .then(data => { if (data.success) setChats(data.chats || []); })
+        .catch(() => {});
+    }
+  }, [token]);
+
+  const displayChats = token && chats.length > 0 
+    ? chats.filter(c => c.name?.toLowerCase().includes(search.toLowerCase()))
+    : DIRECT.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: COLORS.bg }}>
@@ -26,42 +37,34 @@ function ChatsTab({ onSelect }) {
           <span style={{ color: COLORS.muted }}>🔍</span>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search chats..." style={{ flex: 1, border: "none", background: "transparent", fontSize: 14, color: COLORS.text, outline: "none" }} />
         </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", paddingBottom: 2 }}>
-          {["direct", "groups", "anon"].map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              padding: "8px 20px", borderRadius: 24, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", transition: "all 0.2s", textTransform: "uppercase", letterSpacing: 0.5,
-              background: tab === t ? COLORS.peach : `${COLORS.peach}25`,
-              color: tab === t ? COLORS.text : COLORS.muted,
-              boxShadow: tab === t ? `0 4px 12px ${COLORS.peach}60` : "none",
-            }}>{t}</button>
-          ))}
-        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 20px" }}>
-        {current.map(chat => (
-          <div key={chat.id} className="chat-item" onClick={() => onSelect(chat, tab)} style={{
+        {displayChats.map(chat => (
+          <div key={chat._id || chat.id} className="chat-item" onClick={() => onSelect(chat, "direct")} style={{
             background: COLORS.card, borderRadius: 18, padding: "14px 16px", marginBottom: 10,
             display: "flex", alignItems: "center", gap: 14, cursor: "pointer",
             boxShadow: `0 2px 10px ${COLORS.peach}25`, border: `1px solid ${COLORS.peach}20`, transition: "all 0.15s",
           }}>
-            <Avatar name={chat.name} size={50} online={chat.online} anon={chat.anon} />
+            <Avatar name={chat.name || chat.username} size={50} online={chat.isOnline} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>{chat.anon ? "👤 " : ""}{chat.name}</span>
-                <span style={{ fontSize: 11, color: COLORS.muted, fontWeight: 500 }}>{chat.time}</span>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{chat.name || chat.username}</span>
+                <span style={{ fontSize: 11, color: COLORS.muted, fontWeight: 500 }}>{chat.lastMessageTime || ""}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, color: COLORS.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{chat.preview}</span>
-                {chat.unread > 0 && <div style={{ minWidth: 20, height: 20, borderRadius: 10, background: COLORS.teal, color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>{chat.unread}</div>}
+                <span style={{ fontSize: 13, color: COLORS.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{chat.lastMessage || "Start a conversation"}</span>
+                {chat.unreadCount > 0 && <div style={{ minWidth: 20, height: 20, borderRadius: 10, background: COLORS.teal, color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>{chat.unreadCount}</div>}
               </div>
             </div>
           </div>
         ))}
+        {!token && displayChats.length === 0 && (
+          <div style={{ textAlign: "center", padding: 40, color: COLORS.muted }}>
+            <p>Login to see your conversations</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-export default ChatsTab;

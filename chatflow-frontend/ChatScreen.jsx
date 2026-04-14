@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { COLORS, MOCK_MESSAGES } from './constants.js';
+import { COLORS } from './constants.js';
 import Avatar from './Avatar.jsx';
 import { API } from './api.js';
 
-function ChatScreen({ chat, onBack, isGroup, isAnon, token }) {
-  const [messages, setMessages] = useState(MOCK_MESSAGES[chat.id] || []);
+function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [ghostMode, setGhostMode] = useState(false);
+  const [loading, setLoading] = useState(true);
   const bottomRef = useRef(null);
 
   useEffect(() => { 
@@ -14,54 +15,71 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token }) {
   }, [messages]);
 
   useEffect(() => {
-    if (token && chat?._id) {
+    if (chat?._id && token) {
+      setLoading(true);
       API.getMessages(chat._id, token)
-        .then(data => { if (data.success && data.messages) setMessages(data.messages); })
-        .catch(() => {});
+        .then(data => { 
+          if (data.success && data.messages) {
+            setMessages(data.messages.map(m => ({
+              ...m,
+              from: m.sender === "me" ? "me" : (isGroup ? m.senderName : "them"),
+            })));
+          }
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
   }, [chat?._id, token]);
 
   const send = async () => {
     if (!input.trim()) return;
     
+    const tempId = Date.now();
+    const tempMsg = {
+      id: tempId,
+      _id: tempId,
+      from: "me",
+      text: input,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      createdAt: new Date().toISOString(),
+      ghost: ghostMode,
+    };
+    
+    setMessages(m => [...m, tempMsg]);
+    const textToSend = input;
+    setInput("");
+    
     if (token && chat?._id) {
       try {
-        const data = await API.sendMessage(chat._id, input, token);
+        const data = await API.sendMessage(chat._id, textToSend, token);
         if (data.success) {
-          setMessages(m => [...m, data.message]);
+          setMessages(m => m.map(msg => 
+            msg._id === tempId 
+              ? { ...data.message, from: "me", time: new Date(data.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+              : msg
+          ));
+          if (onMessageSent) onMessageSent(chat._id, data.message);
         }
-      } catch {
-        const msgId = Date.now();
-        const msg = {
-          id: msgId, from: "me", text: input,
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          ghost: ghostMode,
-        };
-        setMessages(m => [...m, msg]);
-      }
-    } else {
-      const msgId = Date.now();
-      const msg = {
-        id: msgId, from: "me", text: input,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        ghost: ghostMode,
-      };
-      setMessages(m => [...m, msg]);
-      if (ghostMode) {
-        setTimeout(() => setMessages(m => m.filter(x => x.id !== msgId)), 8000);
+      } catch (err) {
+        console.log("Using offline mode");
       }
     }
-    setInput("");
+    
+    if (ghostMode) {
+      setTimeout(() => setMessages(m => m.filter(x => x._id !== tempId)), 8000);
+    }
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: COLORS.bg }}>
       <div style={{ padding: "14px 16px", background: COLORS.card, display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${COLORS.peach}40`, boxShadow: `0 2px 12px ${COLORS.peach}30` }}>
         <button onClick={onBack} style={{ background: COLORS.peach, border: "none", borderRadius: 10, width: 36, height: 36, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>←</button>
-        <Avatar name={chat.name} size={40} online={chat.online} anon={isAnon} />
+        <Avatar name={chat.name || chat.username} size={40} online={chat.isOnline} anon={isAnon} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: "sans-serif", fontWeight: 700, fontSize: 16 }}>{isAnon ? "👤 " : ""}{chat.name}</div>
-          <div style={{ fontSize: 11, color: COLORS.muted }}>{isGroup ? `${chat.members} members` : chat.online ? "🟢 online" : "offline"}</div>
+          <div style={{ fontFamily: "sans-serif", fontWeight: 700, fontSize: 16 }}>{isAnon ? "👤 " : ""}{chat.name || chat.username}</div>
+          <div style={{ fontSize: 11, color: COLORS.muted }}>{isGroup ? `${chat.members || 0} members` : chat.isOnline ? "🟢 online" : "offline"}</div>
         </div>
         <button onClick={() => setGhostMode(g => !g)} style={{
           background: ghostMode ? COLORS.teal : `${COLORS.teal}22`, border: "none", borderRadius: 10,
@@ -79,17 +97,25 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token }) {
       )}
 
       <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
-        {messages.map(msg => (
-          <div key={msg.id || msg._id} style={{ display: "flex", justifyContent: msg.from === "me" || msg.sender === "me" ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", opacity: msg.ghost ? 0.85 : 1, transition: "opacity 0.5s" }}>
-            {msg.from !== "me" && msg.sender !== "me" && <Avatar name={isAnon ? "?" : (isGroup ? msg.from : chat.name)} size={28} anon={isAnon} />}
+        {loading && (
+          <div style={{ textAlign: "center", color: COLORS.muted, padding: 20 }}>Loading messages...</div>
+        )}
+        {!loading && messages.length === 0 && (
+          <div style={{ textAlign: "center", color: COLORS.muted, padding: 20 }}>
+            {token ? "No messages yet. Start the conversation!" : "Login to see messages"}
+          </div>
+        )}
+        {messages.map((msg, idx) => (
+          <div key={msg._id || msg.id || idx} style={{ display: "flex", justifyContent: msg.from === "me" ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", opacity: msg.ghost ? 0.85 : 1, transition: "opacity 0.5s" }}>
+            {msg.from !== "me" && <Avatar name={isAnon ? "?" : (isGroup ? msg.from : (chat.name || chat.username))} size={28} anon={isAnon} />}
             <div style={{ maxWidth: "72%" }}>
-              {isGroup && msg.from !== "me" && msg.sender !== "me" && <div style={{ fontSize: 10, color: COLORS.teal, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>{msg.from || msg.senderName}</div>}
+              {isGroup && msg.from !== "me" && <div style={{ fontSize: 10, color: COLORS.teal, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>{msg.from}</div>}
               <div style={{
-                background: msg.from === "me" || msg.sender === "me" ? `linear-gradient(135deg, ${COLORS.peach}, ${COLORS.peachDark})` : COLORS.card,
-                borderRadius: msg.from === "me" || msg.sender === "me" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                background: msg.from === "me" ? `linear-gradient(135deg, ${COLORS.peach}, ${COLORS.peachDark})` : COLORS.card,
+                borderRadius: msg.from === "me" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                 padding: "10px 14px",
                 boxShadow: `0 2px 8px ${COLORS.peach}40`,
-                border: msg.from !== "me" && msg.sender !== "me" ? `1px solid ${COLORS.peach}40` : "none",
+                border: msg.from !== "me" ? `1px solid ${COLORS.peach}40` : "none",
               }}>
                 <div style={{ fontSize: 14 }}>{msg.text}</div>
                 <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 4, textAlign: "right" }}>

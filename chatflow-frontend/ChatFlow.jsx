@@ -111,7 +111,7 @@ export default function ChatFlow() {
             <ChatScreen chat={activeChat} onBack={closeChat} isGroup={chatType === "groups"} isAnon={chatType === "anon"} token={token} />
           ) : (
             <>
-              {screen === "chats" && <ChatsTab onSelect={openChat} />}
+              {screen === "chats" && <ChatsTab onSelect={openChat} token={token} />}
               {screen === "groups" && <GroupsTab onSelect={openChat} />}
               {screen === "vibe" && <VibeTab />}
             </>
