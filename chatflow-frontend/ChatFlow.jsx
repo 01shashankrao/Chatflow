@@ -32,7 +32,7 @@ export default function ChatFlow() {
     try {
       const data = authMode === "login" 
         ? await API.login({ email: authData.email, password: authData.password })
-        : await API.register({ name: authData.name, email: authData.email, password: authData.password });
+        : await API.register({ username: authData.name, email: authData.email, password: authData.password });
       
       if (data.success) {
         setToken(data.token);
@@ -70,7 +70,7 @@ export default function ChatFlow() {
               <h2 style={{ marginBottom: 20, color: COLORS.text }}>{authMode === "login" ? "Welcome Back" : "Create Account"}</h2>
               <form onSubmit={handleAuth}>
                 {authMode === "register" && (
-                  <input type="text" placeholder="Name" required value={authData.name} onChange={e => setAuthData(d => ({...d, name: e.target.value}))} style={{ width: "100%", padding: 12, marginBottom: 12, border: `1px solid ${COLORS.peach}40`, borderRadius: 10, fontSize: 14, outline: "none" }} />
+                  <input type="text" placeholder="Username" required value={authData.name} onChange={e => setAuthData(d => ({...d, name: e.target.value}))} style={{ width: "100%", padding: 12, marginBottom: 12, border: `1px solid ${COLORS.peach}40`, borderRadius: 10, fontSize: 14, outline: "none" }} />
                 )}
                 <input type="email" placeholder="Email" required value={authData.email} onChange={e => setAuthData(d => ({...d, email: e.target.value}))} style={{ width: "100%", padding: 12, marginBottom: 12, border: `1px solid ${COLORS.peach}40`, borderRadius: 10, fontSize: 14, outline: "none" }} />
                 <input type="password" placeholder="Password" required value={authData.password} onChange={e => setAuthData(d => ({...d, password: e.target.value}))} style={{ width: "100%", padding: 12, marginBottom: 12, border: `1px solid ${COLORS.peach}40`, borderRadius: 10, fontSize: 14, outline: "none" }} />
