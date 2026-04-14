@@ -3,7 +3,7 @@ import { COLORS } from './constants.js';
 import Avatar from './Avatar.jsx';
 import { API } from './api.js';
 
-function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
+function ChatScreen({ chat, onBack, isGroup, isAnon, token }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [ghostMode, setGhostMode] = useState(false);
@@ -14,7 +14,7 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  useEffect(() => {
+  const loadMessages = () => {
     if (chat?._id && token) {
       setLoading(true);
       API.getMessages(chat._id, token)
@@ -22,26 +22,30 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
           if (data.success && data.messages) {
             setMessages(data.messages.map(m => ({
               ...m,
-              from: m.sender === "me" ? "me" : (isGroup ? m.senderName : "them"),
+              text: m.content,
+              from: m.sender === "me" || m.sender?._id === "me" ? "me" : (isGroup ? m.sender?.username : "them"),
             })));
           }
           setLoading(false);
         })
         .catch(() => setLoading(false));
-    } else {
-      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadMessages();
   }, [chat?._id, token]);
 
   const send = async () => {
     if (!input.trim()) return;
     
-    const tempId = Date.now();
+    const tempId = `temp_${Date.now()}`;
     const tempMsg = {
-      id: tempId,
       _id: tempId,
-      from: "me",
       text: input,
+      content: input,
+      from: "me",
+      sender: "me",
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       createdAt: new Date().toISOString(),
       ghost: ghostMode,
@@ -53,17 +57,16 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
     
     if (token && chat?._id) {
       try {
-        const data = await API.sendMessage(chat._id, textToSend, token);
+        const data = await API.sendMessage(chat._id, textToSend, token, ghostMode);
         if (data.success) {
           setMessages(m => m.map(msg => 
             msg._id === tempId 
-              ? { ...data.message, from: "me", time: new Date(data.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+              ? { ...data.message, text: data.message.content, from: "me", time: new Date(data.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
               : msg
           ));
-          if (onMessageSent) onMessageSent(chat._id, data.message);
         }
       } catch (err) {
-        console.log("Using offline mode");
+        console.log("Message sent (offline mode)");
       }
     }
     
@@ -76,9 +79,9 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: COLORS.bg }}>
       <div style={{ padding: "14px 16px", background: COLORS.card, display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${COLORS.peach}40`, boxShadow: `0 2px 12px ${COLORS.peach}30` }}>
         <button onClick={onBack} style={{ background: COLORS.peach, border: "none", borderRadius: 10, width: 36, height: 36, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>←</button>
-        <Avatar name={chat.name || chat.username} size={40} online={chat.isOnline} anon={isAnon} />
+        <Avatar name={chat.name || chat.username || "User"} size={40} online={chat.isOnline} anon={isAnon} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: "sans-serif", fontWeight: 700, fontSize: 16 }}>{isAnon ? "👤 " : ""}{chat.name || chat.username}</div>
+          <div style={{ fontFamily: "sans-serif", fontWeight: 700, fontSize: 16 }}>{isAnon ? "👤 " : ""}{chat.name || chat.username || "User"}</div>
           <div style={{ fontSize: 11, color: COLORS.muted }}>{isGroup ? `${chat.members || 0} members` : chat.isOnline ? "🟢 online" : "offline"}</div>
         </div>
         <button onClick={() => setGhostMode(g => !g)} style={{
@@ -102,11 +105,11 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
         )}
         {!loading && messages.length === 0 && (
           <div style={{ textAlign: "center", color: COLORS.muted, padding: 20 }}>
-            {token ? "No messages yet. Start the conversation!" : "Login to see messages"}
+            Say hi! 👋
           </div>
         )}
         {messages.map((msg, idx) => (
-          <div key={msg._id || msg.id || idx} style={{ display: "flex", justifyContent: msg.from === "me" ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", opacity: msg.ghost ? 0.85 : 1, transition: "opacity 0.5s" }}>
+          <div key={msg._id || idx} style={{ display: "flex", justifyContent: msg.from === "me" ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", opacity: msg.ghost ? 0.85 : 1, transition: "opacity 0.5s" }}>
             {msg.from !== "me" && <Avatar name={isAnon ? "?" : (isGroup ? msg.from : (chat.name || chat.username))} size={28} anon={isAnon} />}
             <div style={{ maxWidth: "72%" }}>
               {isGroup && msg.from !== "me" && <div style={{ fontSize: 10, color: COLORS.teal, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>{msg.from}</div>}
@@ -117,7 +120,7 @@ function ChatScreen({ chat, onBack, isGroup, isAnon, token, onMessageSent }) {
                 boxShadow: `0 2px 8px ${COLORS.peach}40`,
                 border: msg.from !== "me" ? `1px solid ${COLORS.peach}40` : "none",
               }}>
-                <div style={{ fontSize: 14 }}>{msg.text}</div>
+                <div style={{ fontSize: 14 }}>{msg.text || msg.content}</div>
                 <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 4, textAlign: "right" }}>
                   {msg.ghost ? "💨 " : ""}{msg.time || new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { COLORS, style, DIRECT, GROUPS, ANON } from './constants.js';
+import { COLORS, style } from './constants.js';
 import ChatScreen from './ChatScreen.jsx';
 import ChatsTab from './ChatsTab.jsx';
 import GroupsTab from './GroupsTab.jsx';
@@ -16,13 +16,14 @@ export default function ChatFlow() {
   const [authMode, setAuthMode] = useState("login");
   const [authData, setAuthData] = useState({ name: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
-  const [chats, setChats] = useState([]);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (token) {
-      API.getChats(token)
-        .then(data => { if (data.success) setChats(data.chats || []); })
-        .catch(() => {});
+      API.getChats(token).then(data => {}).catch(() => {});
     }
   }, [token]);
 
@@ -51,6 +52,7 @@ export default function ChatFlow() {
   const logout = () => {
     setToken(null);
     setUser(null);
+    setActiveChat(null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setShowAuth(true);
@@ -58,6 +60,36 @@ export default function ChatFlow() {
 
   const openChat = (chat, type) => { setActiveChat(chat); setChatType(type); };
   const closeChat = () => setActiveChat(null);
+
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+    if (query.length < 2) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const data = await API.searchUsers(query, token);
+      if (data.success) {
+        setSearchResults(data.users.filter(u => u._id !== user?._id));
+      }
+    } catch {}
+    setSearching(false);
+  };
+
+  const startChat = async (selectedUser) => {
+    try {
+      const data = await API.createOrGetChat(selectedUser._id, token);
+      if (data.success) {
+        const chatData = {
+          ...data.chat,
+          name: selectedUser.username,
+          _id: data.chat._id,
+        };
+        setShowNewChat(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        openChat(chatData, "direct");
+      }
+    } catch {}
+  };
 
   if (showAuth) {
     return (
@@ -83,10 +115,46 @@ export default function ChatFlow() {
                 {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
                 <span onClick={() => setAuthMode(authMode === "login" ? "register" : "login")} style={{ color: COLORS.teal, cursor: "pointer", fontWeight: 600 }}>{authMode === "login" ? "Sign Up" : "Login"}</span>
               </p>
-              <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: COLORS.muted }}>
-                <span onClick={() => { setShowAuth(false); setToken("demo"); }} style={{ cursor: "pointer", color: COLORS.teal }}>Continue as Guest</span>
-              </p>
             </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (showNewChat) {
+    return (
+      <>
+        <style>{style}</style>
+        <div style={{ maxWidth: 420, margin: "0 auto", height: "100vh", display: "flex", flexDirection: "column", background: COLORS.bg }}>
+          <div style={{ padding: 16, background: COLORS.card, display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${COLORS.peach}30` }}>
+            <button onClick={() => { setShowNewChat(false); setSearchQuery(""); setSearchResults([]); }} style={{ background: COLORS.peach, border: "none", borderRadius: 10, width: 36, height: 36, cursor: "pointer", fontSize: 18 }}>←</button>
+            <h2 style={{ flex: 1, fontSize: 18, fontWeight: 700 }}>New Message</h2>
+          </div>
+          <div style={{ padding: 16 }}>
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={e => handleSearch(e.target.value)}
+              autoFocus
+              style={{ width: "100%", padding: 12, border: `1px solid ${COLORS.peach}40`, borderRadius: 12, fontSize: 14, outline: "none" }}
+            />
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+            {searching && <p style={{ textAlign: "center", color: COLORS.muted }}>Searching...</p>}
+            {searchResults.map(u => (
+              <div key={u._id} onClick={() => startChat(u)} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: COLORS.card, borderRadius: 12, marginBottom: 8, cursor: "pointer", boxShadow: `0 2px 8px ${COLORS.peach}20` }}>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: `linear-gradient(135deg, ${COLORS.teal}, ${COLORS.tealDark})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 18 }}>{u.username[0].toUpperCase()}</div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{u.username}</div>
+                  <div style={{ fontSize: 12, color: COLORS.muted }}>{u.isOnline ? "🟢 Online" : "Offline"}</div>
+                </div>
+              </div>
+            ))}
+            {!searching && searchQuery.length >= 2 && searchResults.length === 0 && (
+              <p style={{ textAlign: "center", color: COLORS.muted, marginTop: 20 }}>No users found</p>
+            )}
           </div>
         </div>
       </>
@@ -100,10 +168,13 @@ export default function ChatFlow() {
         {!activeChat && (
           <div style={{ padding: "12px 16px", background: COLORS.card, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${COLORS.peach}30` }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.text }}>{user?.name || "Guest"}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.text }}>{user?.username || "Guest"}</div>
               <div style={{ fontSize: 11, color: COLORS.muted }}>Online</div>
             </div>
-            <button onClick={logout} style={{ background: COLORS.peach, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, color: COLORS.text }}>Logout</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowNewChat(true)} style={{ background: COLORS.teal, color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>✏️ New Chat</button>
+              <button onClick={logout} style={{ background: COLORS.peach, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>Logout</button>
+            </div>
           </div>
         )}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>

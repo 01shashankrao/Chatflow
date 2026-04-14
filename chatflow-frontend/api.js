@@ -17,19 +17,29 @@ export const API = {
     headers: { Authorization: `Bearer ${token}` },
   }).then(r => r.json()),
 
-  getMessages: (chatId, token) => fetch(`${API_BASE}/api/messages/${chatId}`, {
+  searchUsers: (query, token) => fetch(`${API_BASE}/api/users/search?q=${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   }).then(r => r.json()),
 
-  sendMessage: (chatId, text, token) => fetch(`${API_BASE}/api/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ chatId, text }),
-  }).then(r => r.json()),
-
-  createChat: (userId, token) => fetch(`${API_BASE}/api/chats`, {
+  createOrGetChat: (userId, token) => fetch(`${API_BASE}/api/chats/direct`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ userId }),
   }).then(r => r.json()),
+
+  getMessages: (chatId, token) => fetch(`${API_BASE}/api/chats/${chatId}/messages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => r.json()),
+
+  sendMessage: (chatId, text, token, isGhost = false) => {
+    const body = { content: text };
+    if (isGhost) {
+      body.disappearAfterSeconds = 8;
+    }
+    return fetch(`${API_BASE}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    }).then(r => r.json());
+  },
 };
